@@ -6,6 +6,8 @@ library(dplyr)
 library(ggplot2)
 library(future)
 library(future.apply)
+library(scDblFinder)
+library(SingleCellExperiment)
 source("Code/utils.R")
 
 # ---
@@ -33,6 +35,12 @@ gse202398_list <- future_lapply(h5_files, function(h5_file) {
   # Basic QC
   seu[["percent_mito"]] <- PercentageFeatureSet(seu, pattern = "^MT-")
   seu <- subset(seu, subset = nFeature_RNA > 500 & nFeature_RNA < 8000 & percent_mito < 20)
+  
+  # Doublet detection
+  sce <- as.SingleCellExperiment(seu)
+  sce <- scDblFinder(sce)
+  seu$scDblFinder.class <- sce$scDblFinder.class
+  seu <- subset(seu, subset = scDblFinder.class != "doublet")
   
   if (ncol(seu) < 100) return(NULL)
   return(seu)
@@ -69,7 +77,11 @@ gse263372_seu$dataset <- "GSE263372"
 # Perform a quick QC check on the loaded object
 gse263372_seu[["percent_mito"]] <- PercentageFeatureSet(gse263372_seu, pattern = "^MT-")
 gse263372_seu <- subset(gse263372_seu, subset = nFeature_RNA > 500 & nFeature_RNA < 8000 & percent_mito < 20)
-cat("After QC, GSE263372 object has", ncol(gse263372_seu), "cells.\n")
+sce <- as.SingleCellExperiment(gse263372_seu)
+sce <- scDblFinder(sce)
+gse263372_seu$scDblFinder.class <- sce$scDblFinder.class
+gse263372_seu <- subset(gse263372_seu, subset = scDblFinder.class != "doublet")
+cat("After QC and doublet removal, GSE263372 object has", ncol(gse263372_seu), "cells.\n")
 
 
 # ---

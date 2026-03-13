@@ -5,6 +5,8 @@ library(Seurat)
 library(Matrix)
 library(rhdf5)
 library(dplyr)
+library(scDblFinder)
+library(SingleCellExperiment)
 source("Code/utils.R") # Load the shared functions
 
 # 1. Configuration
@@ -63,7 +65,15 @@ seu$percent_mito <- as.numeric(h5read(PATH_H5AD, "/obs/pct_counts_mt"))[cm_indic
 seu$origin <- "Adult Primary"
 gc()
 
-# 4. Process using the new reusable function
+# 4. Doublet Detection
+cat("Running scDblFinder...\n")
+sce <- as.SingleCellExperiment(seu)
+sce <- scDblFinder(sce)
+seu$scDblFinder.class <- sce$scDblFinder.class
+seu <- subset(seu, subset = scDblFinder.class != "doublet")
+cat("Removed potential doublets.\n")
+
+# 5. Process using the new reusable function
 # This replaces NormalizeData, FindVariableFeatures, ScaleData, RunPCA
 rm(counts, extract_idx, start_indices, end_indices, row_lengths, new_indptr, subset_indices, subset_data, barcodes, genes, obs_cell_types, cm_indices, donor_ids, region, cell_labels); gc()
 cat("Processing Seurat object with standard workflow...\n")
@@ -74,7 +84,7 @@ seu <- FindNeighbors(seu, dims = 1:30)
 seu <- FindClusters(seu, resolution = 0.5)
 seu <- RunUMAP(seu, dims = 1:30)
 
-# 5. Save
+# 6. Save
 cat("Saving to", OUTPUT_RDS, "...\n")
 saveRDS(seu, OUTPUT_RDS)
 cat("Refactored Adult Primary processing complete!\n")

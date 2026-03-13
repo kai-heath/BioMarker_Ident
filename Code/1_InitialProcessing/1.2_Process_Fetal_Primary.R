@@ -7,22 +7,24 @@ library(future)
 library(future.apply)
 library(dplyr)
 library(rhdf5)
+library(scDblFinder)
+library(SingleCellExperiment)
 source("Code/utils.R") # Load the shared functions
 
 # 1. Configuration
-PATH_DATA <- "RawData/FetalTissue/1_Chromium_cellranger_data_SC/"
+PATH_DATA <- "RawData/Fetal_Primary/1_Chromium_cellranger_data_SC/"
 OUTPUT_RDS <- "ProcessedData/FetalPrimary_SeuratObject.rds"
 OUTPUT_CM_RDS <- "ProcessedData/FetalPrimary_Cardiomyocytes.rds"
 
 # Set parallel plan
-plan("multisession", workers = 4)
+plan("multisession", workers = 4, future.seed = TRUE)
 
 # 2. Sample Discovery and Loading
-file_list <- list.files(PATH_DATA, full.names = FALSE, pattern = ".h5")
+file_list <- list.files(PATH_DATA, full.names = FALSE, pattern = "\\.h5$")
 
 data_list <- future_lapply(file_list, function(x) {
     h5_file <- paste0(PATH_DATA, x)
-    sample_id <- gsub("\.h5$", "", x)
+    sample_id <- gsub("\\.h5$", "", x)
     
     # Filter for Heart tissue early
     tissues <- as.character(unlist(rhdf5::h5read(h5_file, name = "/shoji/Tissue")))
@@ -42,6 +44,12 @@ data_list <- future_lapply(file_list, function(x) {
     # QC and filtering (same as original script)
     seu$percent_mito <- PercentageFeatureSet(seu, pattern = "^MT-")
     seu <- subset(seu, subset = nFeature_RNA > 250 & percent_mito < 30)
+
+    # Doublet detection
+    sce <- as.SingleCellExperiment(seu)
+    sce <- scDblFinder(sce)
+    seu$scDblFinder.class <- sce$scDblFinder.class
+    seu <- subset(seu, subset = scDblFinder.class != "doublet")
     
     if(ncol(seu) < 50) return(NULL)
     return(seu)
@@ -53,17 +61,11 @@ if(length(data_list) == 0) stop("No valid samples processed.")
 names(data_list) <- sapply(data_list, function(x) unique(x$sampleID))
 gc()
 
-# 3. Process and Integrate using the new function
+# 3. Process and Integrate using the new memory-efficient function
+# The new function takes the list of objects directly and handles all steps.
+data <- IntegrateSeuratObjects(data_list, group_by_vars = "sampleID", npcs = 30)
+rm(data_list)
 gc()
-if (length(data_list) > 1) {
-    data <- IntegrateSeuratObjects(data_list, group_by_vars = "sampleID", npcs = 30)
-} else {
-    data <- ProcessSeuratObject(data_list[[1]], npcs = 30)
-    data <- FindNeighbors(data, dims = 1:30)
-    data <- FindClusters(data, resolution = 0.5)
-    data <- RunUMAP(data, dims = 1:30)
-}
-
 
 # 4. Robust CM Identification
 cat("Identifying Cardiomyocytes...\n")
