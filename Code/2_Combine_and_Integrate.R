@@ -49,4 +49,6 @@ ggsave("Integrated_UMAP_by_Cluster.png", plot = p2, width = 8, height = 6)
 cat("Saving the final integrated Seurat object to", OUTPUT_INTEGRATED_RDS, "...\n")
 saveRDS(integrated_data, OUTPUT_INTEGRATED_RDS)
 
+DimPlot(integrated_data, group.by = "cell_type")
+
 cat("Analysis complete!\n")

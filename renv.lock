@@ -5869,54 +5869,9 @@
     },
     "rhdf5": {
       "Package": "rhdf5",
-      "Version": "2.54.1",
-      "Source": "bioc_xgit",
-      "Type": "Package",
-      "Title": "R Interface to HDF5",
-      "Authors@R": "c( person(\"Bernd\", \"Fischer\", role = \"aut\"), person( \"Mike\", \"Smith\", role= \"aut\", comment = c(ORCID = \"0000-0002-7800-3848\", \"Maintainer from 2017 to 2025\") ), person(\"Gregoire\", \"Pau\", role=\"aut\"), person(\"Martin\", \"Morgan\", role = \"ctb\"), person(\"Daniel\", \"van Twisk\", role = \"ctb\"), person( \"Hugo\", \"Gruson\", role = \"cre\", email = \"hugo.gruson@embl.de\", comment = c(ORCID = \"0000-0002-4094-1476\") ) )",
-      "Description": "This package provides an interface between HDF5 and R. HDF5's main features are the ability to store and access very large and/or complex datasets and a wide variety of metadata on mass storage (disk) through a completely portable file format. The rhdf5 package is thus suited for the exchange of large and/or complex datasets between R and other software package, and for letting R applications work on datasets that are larger than the available RAM.",
-      "License": "Artistic-2.0",
-      "URL": "https://github.com/Huber-group-EMBL/rhdf5",
-      "BugReports": "https://github.com/Huber-group-EMBL/rhdf5/issues",
-      "LazyLoad": "true",
-      "VignetteBuilder": "knitr",
-      "Imports": [
-        "Rhdf5lib (>= 1.13.4)",
-        "rhdf5filters (>= 1.15.5)"
-      ],
-      "Depends": [
-        "R (>= 4.0.0)",
-        "methods"
-      ],
-      "Suggests": [
-        "bit64",
-        "BiocStyle",
-        "knitr",
-        "rmarkdown",
-        "testthat",
-        "bench",
-        "dplyr",
-        "ggplot2",
-        "mockery",
-        "BiocParallel"
-      ],
-      "LinkingTo": [
-        "Rhdf5lib"
-      ],
-      "SystemRequirements": "GNU make",
-      "biocViews": "Infrastructure, DataImport",
-      "Encoding": "UTF-8",
-      "Roxygen": "list(markdown = TRUE)",
-      "RoxygenNote": "7.3.3",
-      "RemoteType": "bioc_xgit",
-      "RemoteMirror": "https://git.bioconductor.org/packages",
-      "RemoteRepo": "rhdf5",
-      "RemoteRelease": "release",
-      "RemoteSha": "7f691e436af2edc5013a6036a4f863362372a363",
-      "RemoteBranch": "RELEASE_3_22",
-      "NeedsCompilation": "yes",
-      "Author": "Bernd Fischer [aut], Mike Smith [aut] (ORCID: <https://orcid.org/0000-0002-7800-3848>, Maintainer from 2017 to 2025), Gregoire Pau [aut], Martin Morgan [ctb], Daniel van Twisk [ctb], Hugo Gruson [cre] (ORCID: <https://orcid.org/0000-0002-4094-1476>)",
-      "Maintainer": "Hugo Gruson <hugo.gruson@embl.de>"
+      "Version": "2.52.1",
+      "Source": "Repository",
+      "Repository": "BioCsoft"
     },
     "rhdf5filters": {
       "Package": "rhdf5filters",

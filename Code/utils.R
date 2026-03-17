@@ -85,10 +85,10 @@ IntegrateSeuratObjects <- function(object_list, group_by_vars, n_features = 2000
   merged_object <- FindClusters(merged_object, resolution = 0.5)
   merged_object <- RunUMAP(merged_object, reduction = "harmony", dims = 1:npcs)
 
-  # Seurat v5 post-integration step
-  # if ("harmony" %in% Reductions(merged_object)) {
-  #   merged_object <- JoinLayers(merged_object)
-  # }
+
+   if ("harmony" %in% Reductions(merged_object)) {
+     merged_object <- JoinLayers(merged_object)
+   }
   
   return(merged_object)
 }

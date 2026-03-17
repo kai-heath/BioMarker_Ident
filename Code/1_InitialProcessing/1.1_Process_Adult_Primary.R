@@ -7,6 +7,7 @@ library(rhdf5)
 library(dplyr)
 library(scDblFinder)
 library(SingleCellExperiment)
+library(org.Hs.eg.db)
 source("Code/utils.R") # Load the shared functions
 
 # 1. Configuration
@@ -83,6 +84,52 @@ seu <- ProcessSeuratObject(seu, n_features = 2000, npcs = 30)
 seu <- FindNeighbors(seu, dims = 1:30)
 seu <- FindClusters(seu, resolution = 0.5)
 seu <- RunUMAP(seu, dims = 1:30)
+
+
+
+#5.5 reformat the gene names to geneID
+
+
+counts_matrix <- GetAssayData(seu, assay = "RNA", layer = "counts")
+
+# 2. Extract current ENSEMBL IDs
+ensembl_ids <- rownames(counts_matrix)
+
+# 3. Map ENSEMBL IDs to Gene Symbols
+gene_symbols <- mapIds(
+  x = org.Hs.eg.db,
+  keys = ensembl_ids,
+  column = "SYMBOL",
+  keytype = "ENSEMBL",
+  multiVals = "first" # Takes the first match if one-to-many mapping occurs
+)
+
+# 4. Handle unmapped IDs
+# Keep the original ENSEMBL ID if no gene symbol is found
+unmapped <- is.na(gene_symbols)
+gene_symbols[unmapped] <- ensembl_ids[unmapped]
+
+# 5. Aggregate duplicate mappings via sparse matrix multiplication
+# This is computationally much faster and uses less memory than rowsum()
+group_factor <- factor(gene_symbols)
+
+# Create a grouping matrix (P)
+P <- sparseMatrix(
+  i = as.integer(group_factor), 
+  j = seq_along(group_factor), 
+  x = 1,
+  dimnames = list(levels(group_factor), NULL)
+)
+
+# Multiply grouping matrix by counts matrix to sum duplicates
+aggregated_counts <- P %*% counts_matrix
+
+# 6. Create the new, updated Seurat object
+# This carries over your old cell-level metadata
+seu <- CreateSeuratObject(
+  counts = aggregated_counts, 
+  meta.data = seu[[]] 
+)
 
 # 6. Save
 cat("Saving to", OUTPUT_RDS, "...\n")

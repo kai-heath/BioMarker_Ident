@@ -22,7 +22,7 @@ plan("multisession", workers = 4)
 # Find only the 'filtered' h5 files
 h5_files <- list.files(PATH_GSE202398, pattern = "_filtered_feature_bc_matrix\\.h5$", full.names = TRUE)
 
-gse202398_list <- future_lapply(h5_files, function(h5_file) {
+gse202398_list <- lapply(h5_files, function(h5_file) {
   sample_id <- gsub("_filtered_feature_bc_matrix\\.h5$", "", basename(h5_file))
   cat("Loading sample:", sample_id, "\n")
   
@@ -31,7 +31,7 @@ gse202398_list <- future_lapply(h5_files, function(h5_file) {
   
   seu$sampleID <- sample_id
   seu$dataset <- "GSE202398" # Add a dataset identifier
-  
+  seu <- JoinLayers(seu)
   # Basic QC
   seu[["percent_mito"]] <- PercentageFeatureSet(seu, pattern = "^MT-")
   seu <- subset(seu, subset = nFeature_RNA > 500 & nFeature_RNA < 8000 & percent_mito < 20)
@@ -95,17 +95,11 @@ gse202398_merged <- DietSeurat(gse202398_merged, assays = "RNA", layers = "count
 gse263372_seu <- DietSeurat(gse263372_seu, assays = "RNA", layers = "counts")
 gc()
 
-# Merge the two final objects
-hipsc_cm_combined <- merge(gse202398_merged, gse263372_seu)
-rm(gse202398_merged, gse263372_seu); gc()
-
-cat("Total combined cells:", ncol(hipsc_cm_combined), "\n")
-print(table(hipsc_cm_combined$dataset))
 
 # Use our utility function to integrate them, correcting for the 'dataset' effect
 gc()
 hipsc_cm_integrated <- IntegrateSeuratObjects(
-  data_object = hipsc_cm_combined,
+  c(gse202398_merged, gse263372_seu),
   group_by_vars = "dataset", # Correct for the two different sources
   n_features = 3000,
   npcs = 40
@@ -142,6 +136,10 @@ saveRDS(hipsc_cm_integrated, OUTPUT_FULL_RDS)
 cat("hiPSC-CM processing complete!\n")
 
 # Generate a diagnostic plot
-p1 <- DimPlot(hipsc_cm_integrated, group.by = "dataset", pt.size = 0.5)
+DimPlot(hipsc_cm_integrated, group.by = "stim", pt.size = 0.5)
+
+FeaturePlot(hipsc_cm_integrated, "CM_Score1")
+
 ggsave("hipsc_cm_integrated_by_dataset.png", plot = p1, width = 8, height = 6)
 rm(p1)
+
