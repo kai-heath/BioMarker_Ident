@@ -4,8 +4,6 @@
 library(Seurat)
 library(dplyr)
 library(ggplot2)
-library(future)
-library(future.apply)
 library(scDblFinder)
 library(SingleCellExperiment)
 source("Code/utils.R")
@@ -16,9 +14,6 @@ source("Code/utils.R")
 cat("--- Part 1: Processing GSE202398 ---\n")
 PATH_GSE202398 <- "RawData/GSE202398_(D0-D30Diff)/"
 
-# Set parallel plan for loading
-plan("multisession", workers = 4)
-
 # Find only the 'filtered' h5 files
 h5_files <- list.files(PATH_GSE202398, pattern = "_filtered_feature_bc_matrix\\.h5$", full.names = TRUE)
 
@@ -27,8 +22,31 @@ gse202398_list <- lapply(h5_files, function(h5_file) {
   cat("Loading sample:", sample_id, "\n")
   
   counts <- Read10X_h5(h5_file)
-  seu <- CreateSeuratObject(counts = counts)
   
+  # Filter HTOs that have very few total counts to avoid HTODemux error
+  # (some HTOs are present in the H5 header but were not used in that specific Run)
+  hto_counts <- counts$`Antibody Capture`
+  valid_htos <- rownames(hto_counts)[rowSums(as.matrix(hto_counts)) > 1000]
+  cat("Valid HTOs for sample", sample_id, ":", paste(valid_htos, collapse = ", "), "\n")
+  hto_counts <- hto_counts[valid_htos, , drop = FALSE]
+  
+  HTO_assay <- CreateAssay5Object(counts = hto_counts)
+  seu <- CreateSeuratObject(counts = counts)
+  seu[["HTO"]] <- HTO_assay
+
+  # Filter out cells that have ZERO total HTO counts across all valid tags
+  # HTODemux fails if there are cells with no HTO reads at all
+  hto_totals_per_cell <- colSums(LayerData(seu, assay = "HTO", layer = "counts"))
+  RNA_totals_per_cell <- colSums(LayerData(seu, assay = "RNA", layer = "counts"))
+
+  print(table(hto_totals_per_cell == 0))
+  seu <- subset(seu, cells = names(hto_totals_per_cell[hto_totals_per_cell > 0]))
+  seu <- subset(seu, cells = names(RNA_totals_per_cell[RNA_totals_per_cell > 0]))
+  print(table(colSums(LayerData(seu, assay = "HTO", layer = "counts")) == 0))
+
+  seu <- NormalizeData(seu, assay = "HTO", normalization.method = "CLR")
+  seu <- HTODemux(seu, assay = "HTO", positive.quantile = 0.99)
+
   seu$sampleID <- sample_id
   seu$dataset <- "GSE202398" # Add a dataset identifier
   seu <- JoinLayers(seu)
@@ -41,12 +59,32 @@ gse202398_list <- lapply(h5_files, function(h5_file) {
   sce <- scDblFinder(sce)
   seu$scDblFinder.class <- sce$scDblFinder.class
   seu <- subset(seu, subset = scDblFinder.class != "doublet")
+
+
+  seu <- NormalizeData(seu)
+  # Find and scale variable features
+  seu <- FindVariableFeatures(seu, selection.method = "mean.var.plot")
+  seu <- ScaleData(seu, features = VariableFeatures(seu))
+  
+  # After HTODemux, we want singlets
+  cat("Filtering for singlets based on HTO...\n")
+  seu <- subset(seu, subset = HTO_classification.global == "Singlet")
+  
+  # Map HTO names to timepoint and cell_line
+  # hash.ID is like "LMNA-DAY1" after Seurat auto-correction of "_" to "-"
+  seu$hash.ID <- as.character(seu$hash.ID)
+  
+  # Split the hash.ID to get cell_line and day
+  parts <- strsplit(seu$hash.ID, "-")
+  seu$cell_line <- sapply(parts, `[`, 1)
+  seu$timepoint <- sapply(parts, `[`, 2)
+  
+  # Standardize timepoint: "DAY1" -> "D1"
+  seu$timepoint <- gsub("DAY", "D", seu$timepoint)
   
   if (ncol(seu) < 100) return(NULL)
   return(seu)
 })
-
-plan(sequential) # Return to sequential processing
 
 # Filter out any NULLs and merge
 gse202398_list <- Filter(Negate(is.null), gse202398_list)
@@ -73,6 +111,8 @@ cat("Loaded GSE263372 object with", ncol(gse263372_seu), "cells.\n")
 
 # Add a dataset identifier. We need to check existing metadata to avoid conflicts.
 gse263372_seu$dataset <- "GSE263372"
+# Map stim to timepoint for consistency when merging
+gse263372_seu$timepoint <- gse263372_seu$stim
 
 # Perform a quick QC check on the loaded object
 gse263372_seu[["percent_mito"]] <- PercentageFeatureSet(gse263372_seu, pattern = "^MT-")
@@ -133,13 +173,16 @@ saveRDS(cardiomyocytes, OUTPUT_CM_RDS)
 cat("Saving final hiPSC-CM integrated (all cells) object to", OUTPUT_FULL_RDS, "\n")
 saveRDS(hipsc_cm_integrated, OUTPUT_FULL_RDS)
 
+# Generate diagnostic plots
+p1 <- DimPlot(hipsc_cm_integrated, group.by = "dataset", pt.size = 0.5) + ggtitle("hiPSC-CM by Dataset")
+p2 <- DimPlot(hipsc_cm_integrated, group.by = "timepoint", pt.size = 0.5, label = TRUE) + ggtitle("hiPSC-CM by Timepoint")
+p3 <- FeaturePlot(hipsc_cm_integrated, "CM_Score1") + ggtitle("Cardiomyocyte Score")
+
+# Save plots
+ggsave("Integrated_UMAP_by_Dataset_hiPSC_CM.png", plot = p1, width = 8, height = 6)
+ggsave("Integrated_UMAP_by_Timepoint_hiPSC_CM.png", plot = p2, width = 10, height = 6)
+ggsave("Integrated_UMAP_CM_Score_hiPSC_CM.png", plot = p3, width = 8, height = 6)
+
 cat("hiPSC-CM processing complete!\n")
-
-# Generate a diagnostic plot
-DimPlot(hipsc_cm_integrated, group.by = "stim", pt.size = 0.5)
-
-FeaturePlot(hipsc_cm_integrated, "CM_Score1")
-
-ggsave("hipsc_cm_integrated_by_dataset.png", plot = p1, width = 8, height = 6)
-rm(p1)
+p2
 

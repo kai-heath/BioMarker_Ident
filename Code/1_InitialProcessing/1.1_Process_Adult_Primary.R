@@ -96,7 +96,7 @@ counts_matrix <- GetAssayData(seu, assay = "RNA", layer = "counts")
 ensembl_ids <- rownames(counts_matrix)
 
 # 3. Map ENSEMBL IDs to Gene Symbols
-gene_symbols <- mapIds(
+gene_symbols <- org.Hs.eg.db::mapIds(
   x = org.Hs.eg.db,
   keys = ensembl_ids,
   column = "SYMBOL",
