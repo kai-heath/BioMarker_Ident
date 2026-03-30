@@ -1,6 +1,3 @@
-# Refactored script for processing Fetal Primary data using shared utility functions
-# This script should be run from the project root directory.
-
 library(Seurat)
 library(Matrix)
 library(future)
@@ -11,7 +8,7 @@ library(scDblFinder)
 library(SingleCellExperiment)
 source("Code/utils.R") # Load the shared functions
 
-# 1. Configuration
+# Path Config
 PATH_DATA <- "RawData/Fetal_Primary/1_Chromium_cellranger_data_SC/"
 OUTPUT_RDS <- "ProcessedData/FetalPrimary_SeuratObject.rds"
 OUTPUT_CM_RDS <- "ProcessedData/FetalPrimary_Cardiomyocytes.rds"
@@ -19,7 +16,7 @@ OUTPUT_CM_RDS <- "ProcessedData/FetalPrimary_Cardiomyocytes.rds"
 # Set parallel plan
 plan("multisession", workers = 4, future.seed = TRUE)
 
-# 2. Sample Discovery and Loading
+# loading and cleaning data from each file (this data is seperated across several files so it has to be merged)
 file_list <- list.files(PATH_DATA, full.names = FALSE, pattern = "\\.h5$")
 
 data_list <- future_lapply(file_list, function(x) {
@@ -31,7 +28,7 @@ data_list <- future_lapply(file_list, function(x) {
     indices <- which(tissues == "Heart")
     if(length(indices) == 0) return(NULL)
     
-    # Load Matrix and create Seurat object (same as original script)
+    # create Seurat object
     counts <- Matrix::Matrix(rhdf5::h5read(h5_file, name = "/shoji/Expression", index = list(NULL, indices)), sparse = TRUE)
     cell_ids <- as.character(unlist(rhdf5::h5read(h5_file, name = "/shoji/Cellid", index = list(indices))))
     gene_names <- as.character(unlist(rhdf5::h5read(h5_file, name = "/shoji/Gene")))
@@ -41,7 +38,7 @@ data_list <- future_lapply(file_list, function(x) {
     seu <- CreateSeuratObject(counts = counts)
     seu$sampleID <- sample_id
     
-    # QC and filtering (same as original script)
+    # QC and filtering
     seu$percent_mito <- PercentageFeatureSet(seu, pattern = "^MT-")
     seu <- subset(seu, subset = nFeature_RNA > 250 & percent_mito < 30)
 
@@ -61,14 +58,12 @@ if(length(data_list) == 0) stop("No valid samples processed.")
 names(data_list) <- sapply(data_list, function(x) unique(x$sampleID))
 gc()
 
-# 3. Process and Integrate using the new memory-efficient function
-# The new function takes the list of objects directly and handles all steps.
+# Process and Integrate using utils file
 data <- IntegrateSeuratObjects(data_list, group_by_vars = "sampleID", npcs = 30)
 rm(data_list)
 gc()
 
-# 4. Robust CM Identification
-cat("Identifying Cardiomyocytes...\n")
+# CM Identification
 cardiomyocyte_markers <- list(c("TNNT2", "MYH7", "MYL2", "MYL7"))
 data <- AddModuleScore(data, features = cardiomyocyte_markers, name = "CM_Score")
 
@@ -82,10 +77,9 @@ cm_clusters <- cm_check %>% filter(avg_score > threshold) %>% pull(seurat_cluste
 cardiomyocytes <- subset(data, idents = cm_clusters)
 cat("Found", ncol(cardiomyocytes), "cardiomyocytes.\n")
 
-# 5. Add Origin Metadata and Save
+# Add Metadata and Save
 data$origin <- "Fetal Primary"
 cardiomyocytes$origin <- "Fetal Primary"
 
 saveRDS(data, OUTPUT_RDS)
 saveRDS(cardiomyocytes, OUTPUT_CM_RDS)
-cat("Fetal Primary processing complete!\n")
