@@ -36,19 +36,25 @@ for (origin_name in names(all_cm_list)) {
 # The IntegrateSeuratObjects function expects a list of objects to merge
 integrated_data <- IntegrateSeuratObjects(all_cm_list, group_by_vars = "origin", n_features = 3000, npcs = 40)
 
+#if already saved, run this to skip all above, otherwise DO NOT RUN
+integrated_data<- readRDS("ProcessedData/Integrated_Cardiomyocytes_All_Origins.rds")
+
 # 4. Visualization and Saving
 cat("Generating visualization plots...\n")
 p1 <- DimPlot(integrated_data, group.by = "origin", pt.size = 0.5) +
   ggtitle("Integrated UMAP by Origin")
-ggsave("Integrated_UMAP_by_Origin.png", plot = p1, width = 8, height = 6)
+ggsave("figures/Seurat/Integrated_UMAP_by_Origin.png", plot = p1, width = 8, height = 6)
 
 p2 <- DimPlot(integrated_data, group.by = "seurat_clusters", label = TRUE, pt.size = 0.5) +
   ggtitle("Integrated UMAP by Cluster")
-ggsave("Integrated_UMAP_by_Cluster.png", plot = p2, width = 8, height = 6)
+ggsave("figures/Seurat/Integrated_UMAP_by_Cluster.png", plot = p2, width = 8, height = 6)
 
 cat("Saving the final integrated Seurat object to", OUTPUT_INTEGRATED_RDS, "...\n")
 saveRDS(integrated_data, OUTPUT_INTEGRATED_RDS)
 
-DimPlot(integrated_data, group.by = "cell_type")
+p3 <- DimPlot(integrated_data, group.by = "cell_type")
+ggsave("figures/Seurat/Integrated_UMAP_by_Cell_type.png", plot = p3, width = 8, height = 6)
+
+
 
 cat("Analysis complete!\n")
