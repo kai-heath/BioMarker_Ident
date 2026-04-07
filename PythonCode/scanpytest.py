@@ -1,6 +1,5 @@
 # Core scverse libraries
 from __future__ import annotations
-import re
 
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend — renders to file only
@@ -14,8 +13,6 @@ from matplotlib import rcParams
 
 # Reproducibility
 import scvi
-from scvi.external import SysVI
-import torch
 
 scvi.settings.seed = 0
 print("Last run with scvi-tools version:", scvi.__version__)
@@ -53,7 +50,7 @@ for sample_id, filename in samples.items():
     adatas[sample_id] = gex_adata
 
 hto_cols = list(hto_cols)
-# Concatenate all samples (only GEX features in X)
+
 adata = ad.concat(adatas, label="sample", join="outer")
 adata.obs_names_make_unique()
 
@@ -95,7 +92,7 @@ sc.pp.filter_cells(adata, min_counts=1000)
 
 sc.pp.filter_genes(adata, min_cells=3)
 adata = adata[adata.obs.pct_counts_mt < 20, :].copy()
-adata = adata[adata.obs.pct_counts_ribo < 20, :].copy()
+#adata = adata[adata.obs.pct_counts_ribo < 20, :].copy()
 
 # Saving count data
 adata.layers["counts"] = adata.X.copy()
@@ -123,13 +120,13 @@ sc.pl.pca(
 
 sc.pp.neighbors(adata)
 
-sc.tl.umap(adata, n_components = 3, random_state=42)
+sc.tl.umap(adata, random_state=42)
 sc.pl.umap(
     adata,
     color="Day",
     size=4,
     show=False,
-    save="_umap_Day_SCVI.png",
+    save="_umap_Day.png",
 )
 
 # Using the igraph implementation and a fixed number of iterations can be significantly faster,
@@ -141,7 +138,7 @@ sc.pl.umap(adata, color=["leiden"], show=False, save="_umap_leiden.png")
 
 sc.pl.umap(
     adata,
-    color=["Sample", "CellLine", "day"],
+    color=["CellLine", "Day"],
     wspace=0.5,
     size=3,
     show=False,
@@ -149,3 +146,4 @@ sc.pl.umap(
 ).astype(str).astype("category")
 
 adata.write_h5ad("processed_adata.h5ad")
+
