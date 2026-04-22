@@ -26,6 +26,7 @@ import lamindb as ln
 import numpy as np
 import scanpy as sc
 import seaborn as sns
+import pandas as pd
 from rpy2.robjects import numpy2ri
 from rpy2.robjects.conversion import localconverter
 from scipy.sparse import csc_matrix
@@ -157,12 +158,26 @@ def DoSoup(adata, rawFile):
     # Min 20 cells - filters out 0 count genes
     sc.pp.filter_genes(adata, min_cells=20)
     print(f"Number of genes after cell filter: {adata.n_vars}")
+    return adata
 
-def is_outlier(adata, metric: str, nmads: int):
+def is_outlier(adata, metric: str, nmads: int, upper_only: bool = False):
     M = adata.obs[metric]
-    outlier = (M < np.median(M) - nmads * median_abs_deviation(M)) | (
-        np.median(M) + nmads * median_abs_deviation(M) < M
-    )
+    outlier = pd.Series(False, index=adata.obs_names, dtype=bool)
+
+    for celltype in adata.obs["Classification"].unique():
+        isCelltype = adata.obs["Classification"] == celltype
+        M_group = M[isCelltype]
+
+        med = np.median(M_group)
+        mad = median_abs_deviation(M_group)
+
+        if upper_only:
+            group_outlier = M_group > med + nmads * mad
+        else:
+            group_outlier = (M_group < med - nmads * mad) | (M_group > med + nmads * mad)
+
+        outlier[isCelltype] = group_outlier
+
     return outlier
 
 
@@ -218,15 +233,14 @@ for i, filePath in enumerate(Galdos_Hipsc):
     | is_outlier(gex_adata, "log1p_n_genes_by_counts", 5)
     | is_outlier(gex_adata, "pct_counts_in_top_20_genes", 5)
     )
-    gex_adata.obs["mt_outlier"] = is_outlier(gex_adata, "pct_counts_mt", 3) | (
-    gex_adata.obs["pct_counts_mt"] > 60
-    )
+    gex_adata.obs["mt_outlier"] = is_outlier(gex_adata, "pct_counts_mt", 5, True) 
+    
     print(f"Total number of cells: {gex_adata.n_obs}")
     gex_adata = gex_adata[(~gex_adata.obs.outlier) & (~gex_adata.obs.mt_outlier)].copy()
 
     print(f"Number of cells after filtering of low quality cells: {gex_adata.n_obs}")
-
-    DoSoup(gex_adata, rawFiles[i])
+    gex_adata.raw = gex_adata
+    gex_adata = DoSoup(gex_adata, rawFiles[i])
 
     GaldosAdatas.append(gex_adata)
     del gex_adata, hto_adata
@@ -237,9 +251,9 @@ GaldosAdatas.var_names_make_unique()
 GaldosAdatas.obs_names_make_unique()
 sc.pp.highly_variable_genes(
     GaldosAdatas,
-    n_top_genes=1200,
+    n_top_genes=3000,
     subset=True,
-    layer="counts",
+    layer="soupX_counts",
     flavor="seurat_v3",
     batch_key="sample",
 )
@@ -256,7 +270,7 @@ scvi.model.SCVI.setup_anndata(
     layer="counts",
     batch_key = "sample",
     categorical_covariate_keys=["CellLine"],
-    #continuous_covariate_keys=["pct_counts_mt", "pct_counts_ribo", "pct_counts_hb"],
+    continuous_covariate_keys=["pct_counts_mt", "pct_counts_ribo", "pct_counts_hb"],
 )
 model = scvi.model.SCVI(GaldosAdatas)
 model.train()
@@ -272,5 +286,14 @@ sc.pl.umap(
     show=False,
     save="_umap_DayGaldos.png",
 )
-GaldosAdatas.write("ProcessedData/GaldosScanpy.h5ad")
+
+# 1. Convert .obs and .var row indices to strings
+GaldosAdatas.obs_names = GaldosAdatas.obs_names.astype(str)
+GaldosAdatas.var_names = GaldosAdatas.var_names.astype(str)
+
+# 2. Convert .obs and .var column headers to strings
+GaldosAdatas.obs.columns = GaldosAdatas.obs.columns.astype(str)
+GaldosAdatas.var.columns = GaldosAdatas.var.columns.astype(str)
+
+GaldosAdatas.write_zarr("ProcessedData/GaldosScanpy.zarr")
 
