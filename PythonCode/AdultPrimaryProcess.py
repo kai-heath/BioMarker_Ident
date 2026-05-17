@@ -11,24 +11,37 @@ import scanpy as sc
 import scanpy.external as sce
 
 # Reproducibility
-import scvi
+import numpy as np
 
 filePath = "RawData/HCA_Adult_Primary_Tissue/Global_raw.h5ad"
 adata = sc.read_h5ad(filePath)
 
-adata = adata[adata.obs["donor"].isin(["D2", "D3", "D4"])].copy()
-
 # 3. Normalize
+adata = adata[adata.obs["scANVI_predictions"].isin(["Ventricular Cardiomyocyte", "Atrial Cardiomyocyte"])].copy()
+adata = adata[adata.obs["donor"].isin(["D1", "D2", "D3"])].copy()
+
+sc.pp.filter_cells(adata, min_genes=200)
+sc.pp.filter_genes(adata, min_cells=3)
+
+sc.pp.subsample(adata, n_obs=10000)
+batch_counts = adata.obs["batch"].value_counts()
+keep_batches = batch_counts[batch_counts >= 1000].index
+adata = adata[adata.obs["batch"].isin(keep_batches)].copy()
+
+
 adata.layers["counts"] = adata.X.copy()
+
+#sc.pp.highly_variable_genes(
+#    adata,
+#    layer = "counts",
+#    batch_key="batch",
+#    n_top_genes = 6000,
+#    subset = True,
+#    flavor = "seurat_v3"
+#)
+
 sc.pp.normalize_total(adata, target_sum=1e4)
 sc.pp.log1p(adata)
-adata.raw = adata
-
-#sc.pp.highly_variable_genes(adata, n_top_genes=2000, flavor="seurat_v3")
-sc.tl.leiden(adata, flavor="igraph", n_iterations=2, random_state=42)
-
-sc.pl.umap(adata, size=4, color = "scANVI_predictions", show=False, save="_umapAPT.png")
-
-adata = adata[adata.obs["scANVI_predictions"].isin(["Ventricular Cardiomyocyte", "Atrial Cardiomyocyte"])].copy()
 
 adata.write_zarr("ProcessedData/APTCardioScanpy.zarr")
+adata = ad.read_zarr("ProcessedData/APTCardioScanpy.zarr")

@@ -215,7 +215,6 @@ for i, filePath in enumerate(Galdos_Hipsc):
     for j, hto_name in enumerate(hto_adata.var_names):
         # Convert to dense and flatten to match obs column expectations
         gex_adata.obs[hto_name] = hto_adata.X[:, j].toarray().flatten()
-    gex_adata.layers["counts"] = gex_adata.X.copy()
     sce.pp.hashsolo(gex_adata, list(HTOnames[i]))
     gex_adata = gex_adata[~gex_adata.obs['Classification'].isin(["Doublet", "Negative", "None"]), :].copy()
     
@@ -241,7 +240,6 @@ for i, filePath in enumerate(Galdos_Hipsc):
     gex_adata = gex_adata[(~gex_adata.obs.outlier) & (~gex_adata.obs.mt_outlier)].copy()
 
     print(f"Number of cells after filtering of low quality cells: {gex_adata.n_obs}")
-    gex_adata.raw = gex_adata
     gex_adata = DoSoup(gex_adata, rawFiles[i])
 
 
@@ -253,64 +251,42 @@ for i, filePath in enumerate(Galdos_Hipsc):
     fields='entrezgene,ensembl.gene',
     species='human',
     as_dataframe=True,
-    returnall=True  # returns {'out': df, 'dup': [...], 'missing': [...]}
+    returnall=True 
     )
 
     df = results['out']
 
-    # For dups: just keep the first hit (usually fine for broad CM filtering)
     df = df[~df.index.duplicated(keep='first')]
-
-    # Map onto adata.var
     gex_adata.var['ensembl_id'] = gex_adata.var_names.map(df['ensembl.gene'])
     del df
     gex_adata = gex_adata[:, gex_adata.var['ensembl_id'].notna()].copy()
 
     gex_adata.var_names = gex_adata.var['ensembl_id']
+    gex_adata.obs["batch"] = "run_" + str(i)
+    gex_adata.obs["batch"] = gex_adata.obs["batch"].astype("category")
 
     GaldosAdatas.append(gex_adata)
+    gex_adata.layers["counts"] = gex_adata.X.copy()
+    sc.pp.normalize_total(gex_adata)
+    sc.pp.log1p(gex_adata)
     del gex_adata, hto_adata
-    
-GaldosAdatas = ad.concat(GaldosAdatas, label="sample", join="outer")
+
+GaldosAdatas = ad.concat(GaldosAdatas, join="outer")
 GaldosAdatas.var_names_make_unique()
 GaldosAdatas.obs_names_make_unique()
+
+#sc.pp.highly_variable_genes(
+#    GaldosAdatas,
+#    layer = "counts",
+#    batch_key="batch",
+#    subset = True,
+#    flavor = "seurat_v3"
+#)
 
 GaldosAdatas.obs["CellLine"] = GaldosAdatas.obs["Classification"].str.extract(r"^([^_]+)")
 GaldosAdatas.obs["Day"] = GaldosAdatas.obs["Classification"].str.extract(r"DAY(\d+)").astype(int).astype("category")
 toRemove = GaldosAdatas.obs.columns[GaldosAdatas.obs.columns.str.contains(r"_DAY")].tolist()
 GaldosAdatas.obs.drop(columns = toRemove, inplace = True)
-
-torch.set_float32_matmul_precision('medium')
-scvi.model.SCVI.setup_anndata(
-    GaldosAdatas,
-    layer="counts",
-    batch_key = "sample",
-    categorical_covariate_keys=["CellLine"],
-    continuous_covariate_keys=["pct_counts_mt", "pct_counts_ribo", "pct_counts_hb"],
-)
-model = scvi.model.SCVI(GaldosAdatas)
-model.train()
-GaldosAdatas.obsm["X_scVI"] = model.get_latent_representation()
-GaldosAdatas.obsm["X_normalized_scVI"] = model.get_normalized_expression()  
-sc.pp.neighbors(GaldosAdatas, use_rep="X_scVI")
-sc.tl.umap(GaldosAdatas)
-sc.tl.leiden(GaldosAdatas)
-sc.pl.umap(
-    GaldosAdatas,
-    color="Day",
-    size=4,
-    show=False,
-    save="_umap_DayGaldos.png",
-)
-
-# 1. Convert .obs and .var row indices to strings
-GaldosAdatas.obs_names = GaldosAdatas.obs_names.astype(str)
-GaldosAdatas.var_names = GaldosAdatas.var_names.astype(str)
-
-# 2. Convert .obs and .var column headers to strings
-GaldosAdatas.obs.columns = GaldosAdatas.obs.columns.astype(str)
-GaldosAdatas.var.columns = GaldosAdatas.var.columns.astype(str)
-
 
 GaldosAdatas.write_zarr("ProcessedData/GaldosScanpy.zarr")
 
