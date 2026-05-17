@@ -31,6 +31,8 @@ from rpy2.robjects import numpy2ri
 from rpy2.robjects.conversion import localconverter
 from scipy.sparse import csc_matrix
 from scipy.stats import median_abs_deviation
+import mygene
+
 rcb.logger.setLevel(logging.ERROR)
 scvi.settings.seed = 0
 
@@ -242,29 +244,43 @@ for i, filePath in enumerate(Galdos_Hipsc):
     gex_adata.raw = gex_adata
     gex_adata = DoSoup(gex_adata, rawFiles[i])
 
+
+    mg = mygene.MyGeneInfo()
+    geneNames = gex_adata.var_names
+    results = mg.querymany(
+    geneNames.tolist(),
+    scopes='symbol',
+    fields='entrezgene,ensembl.gene',
+    species='human',
+    as_dataframe=True,
+    returnall=True  # returns {'out': df, 'dup': [...], 'missing': [...]}
+    )
+
+    df = results['out']
+
+    # For dups: just keep the first hit (usually fine for broad CM filtering)
+    df = df[~df.index.duplicated(keep='first')]
+
+    # Map onto adata.var
+    gex_adata.var['ensembl_id'] = gex_adata.var_names.map(df['ensembl.gene'])
+    del df
+    gex_adata = gex_adata[:, gex_adata.var['ensembl_id'].notna()].copy()
+
+    gex_adata.var_names = gex_adata.var['ensembl_id']
+
     GaldosAdatas.append(gex_adata)
     del gex_adata, hto_adata
     
-
 GaldosAdatas = ad.concat(GaldosAdatas, label="sample", join="outer")
 GaldosAdatas.var_names_make_unique()
 GaldosAdatas.obs_names_make_unique()
-sc.pp.highly_variable_genes(
-    GaldosAdatas,
-    n_top_genes=3000,
-    subset=True,
-    layer="soupX_counts",
-    flavor="seurat_v3",
-    batch_key="sample",
-)
+
 GaldosAdatas.obs["CellLine"] = GaldosAdatas.obs["Classification"].str.extract(r"^([^_]+)")
 GaldosAdatas.obs["Day"] = GaldosAdatas.obs["Classification"].str.extract(r"DAY(\d+)").astype(int).astype("category")
 toRemove = GaldosAdatas.obs.columns[GaldosAdatas.obs.columns.str.contains(r"_DAY")].tolist()
 GaldosAdatas.obs.drop(columns = toRemove, inplace = True)
 
-#sc.pp.pca(GaldosAdatas)
-
-torch.set_float32_matmul_precision('high')
+torch.set_float32_matmul_precision('medium')
 scvi.model.SCVI.setup_anndata(
     GaldosAdatas,
     layer="counts",
@@ -295,5 +311,8 @@ GaldosAdatas.var_names = GaldosAdatas.var_names.astype(str)
 GaldosAdatas.obs.columns = GaldosAdatas.obs.columns.astype(str)
 GaldosAdatas.var.columns = GaldosAdatas.var.columns.astype(str)
 
+
 GaldosAdatas.write_zarr("ProcessedData/GaldosScanpy.zarr")
+
+GaldosAdatas = ad.read_zarr("ProcessedData/GaldosScanpy.zarr")
 

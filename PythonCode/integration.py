@@ -1,5 +1,5 @@
 # Core scverse libraries
-from mlx.core.random import categorical
+from anndata import read_zarr
 from __future__ import annotations
 
 import matplotlib
@@ -31,64 +31,10 @@ BioreactorAdata.obs[['CellLine', 'substrate']] = BioreactorAdata.obs['orig.ident
 
 GaldosAdata.obs["substrate"] = "2D"
 
-
-mergedAdata = ad.concat([GaldosAdata, BioreactorAdata], join = "inner")
+mergedAdata = ad.concat([GaldosAdata, BioreactorAdata], join = "outer")
 
 del(GaldosAdata)
 del(BioreactorAdata)
-
-sc.pp.highly_variable_genes(
-    mergedAdata,
-    n_top_genes=3000,
-    subset=True,
-    layer="counts",
-    flavor="seurat_v3",
-    batch_key="source",
-)
-torch.set_float32_matmul_precision('medium')
-scvi.model.SCVI.setup_anndata(
-    mergedAdata,
-    layer="counts",
-    batch_key = "source",
-    categorical_covariate_keys=["CellLine"],
-    continuous_covariate_keys=["pct_counts_mt", "pct_counts_ribo", "pct_counts_hb"],
-)
-model = scvi.model.SCVI(mergedAdata)
-model.train()
-mergedAdata.obsm["X_scVI"] = model.get_latent_representation()
-mergedAdata.obsm["X_normalized_scVI"] = model.get_normalized_expression()  
-
-sc.pp.neighbors(mergedAdata
-    , use_rep="X_scVI"
-    )
-sc.tl.umap(mergedAdata)
-sc.tl.leiden(mergedAdata)
-
-fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-
-p1 = sc.pl.umap(
-    mergedAdata[(mergedAdata.obs["source"] == "Galdos").copy() & (mergedAdata.obs["Day"] == 15).copy()],
-    size=4,
-    ax=axs[0],
-    color = "Day"
-)
-p2 = sc.pl.umap(
-    mergedAdata[(mergedAdata.obs["source"] == "Bioreactor")],
-    size=4,
-    ax=axs[1],
-    color = "substrate",
-)
-
-
-plt.tight_layout()
-plt.show()
-plt.savefig("figures/BioreactorGaldosComparison.png")
-
-sc.pl.umap(
-    mergedAdata,
-    size = 4,
-    color = "Day"
-)
 
 mergedAdata.write_zarr("ProcessedData/GaldosBioReactor.zarr")
 mergedAdata = ad.read_zarr("ProcessedData/GaldosBioReactor.zarr")
@@ -101,16 +47,31 @@ ATPAdata.obs["Day"] = 100
 ATPAdata.obs["Day"] = ATPAdata.obs["Day"].astype("category")
 ATPAdata.obs["source"] = "PrimaryAdult"
 ATPAdata.obs["CellType"] = ATPAdata.obs["scANVI_predictions"]
+ATPAdata.obs["cellOrigin"] = "native"
 
-
+mergedAdata.obs["cellOrigin"] = "hipsc"
 mergedAdata = ad.concat([mergedAdata, ATPAdata], join = "outer")
 del ATPAdata
 
+#sc.pp.normalize_total(mergedAdata, target_sum=1e4)
+#sc.pp.log1p(mergedAdata)
+sc.pp.highly_variable_genes(
+    mergedAdata,
+    n_top_genes=3000,
+    subset=True,
+    batch_key="source",
+    layer="counts",
+    flavor = "seurat_v3"
+)
+
+mergedAdata.obs["cellOrigin"] = mergedAdata.obs["cellOrigin"].astype("category")
+
+torch.set_float32_matmul_precision('high')
 scvi.model.SCVI.setup_anndata(
     mergedAdata,
-    layer="counts",
     batch_key = "source",
-    #categorical_covariate_keys=["CellLine"],
+    layer = "counts",
+    #categorical_covariate_keys=["cellOrigin"],
     #continuous_covariate_keys=["pct_counts_mt", "pct_counts_ribo", "pct_counts_hb"],
 )
 model = scvi.model.SCVI(mergedAdata)
@@ -119,13 +80,23 @@ mergedAdata.obsm["X_scVI"] = model.get_latent_representation()
 mergedAdata.obsm["X_normalized_scVI"] = model.get_normalized_expression()  
 
 sc.pp.neighbors(mergedAdata,
-    use_rep="X_scVI"
+    use_rep="X_scVI",
+    #n_neighbors=10,
+    metric="cosine"
     )
-sc.tl.umap(mergedAdata)
-sc.tl.leiden(mergedAdata)
+sc.tl.umap(
+    mergedAdata,          # Increases whitespace between distinct groups
+)
+
+#sc.tl.leiden(mergedAdata, flavor='igraph', n_iterations=2)
+
 
 sc.pl.umap(
     mergedAdata,
     size = 4,
-    color = "Day"
+    color = "substrate",
+    save = "integratedsubstrate.png"
 )
+
+mergedAdata.write_zarr("ProcessedData/mergedScanpy.zarr")
+mergedAdata = ad.read_zarr("ProcessedData/mergedScanpy.zarr")
