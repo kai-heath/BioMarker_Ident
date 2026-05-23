@@ -16,7 +16,7 @@ import numpy as np
 filePath = "RawData/HCA_Adult_Primary_Tissue/Global_raw.h5ad"
 adata = sc.read_h5ad(filePath)
 
-# 3. Normalize
+# grab the labels and only get
 adata = adata[adata.obs["scANVI_predictions"].isin(["Ventricular Cardiomyocyte", "Atrial Cardiomyocyte"])].copy()
 adata = adata[adata.obs["donor"].isin(["D1", "D2", "D3"])].copy()
 

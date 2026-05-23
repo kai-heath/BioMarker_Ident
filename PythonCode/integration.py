@@ -2,16 +2,13 @@
 import pandas as pd
 import regex
 from scvi.model import SCANVI
-from jax.numpy import log2
 import anndata as ad
 from anndata import read_zarr
-from __future__ import annotations
 
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from scvi.external import SysVI
 
 # Data retrieval
 import scanpy as sc
